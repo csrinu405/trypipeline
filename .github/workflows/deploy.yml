@@ -4,6 +4,10 @@ on:
   push:
     branches: [ "main" ]
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -11,25 +15,16 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - id: auth
-      uses: google-github-actions/auth@v2
+    - uses: google-github-actions/auth@v2
       with:
-        workload_identity_provider: projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider
-        service_account: github-ci-cd@newproject-483611.iam.gserviceaccount.com
+        workload_identity_provider: "projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+        service_account: "github-ci-cd@newproject-483611.iam.gserviceaccount.com"
 
-    - uses: google-github-actions/setup-gcloud@v2
-
-    - run: |
-        gcloud auth configure-docker us-central1-docker.pkg.dev
+    - run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
     - run: |
         docker build -t us-central1-docker.pkg.dev/newproject-483611/devops-repo/devops-app:${{ github.sha }} app
         docker push us-central1-docker.pkg.dev/newproject-483611/devops-repo/devops-app:${{ github.sha }}
-
-    - run: |
-        gcloud container clusters get-credentials devops-cluster \
-        --region us-central1 \
-        --project newproject-483611
 
     - run: |
         kubectl set image deployment/devops-app \
