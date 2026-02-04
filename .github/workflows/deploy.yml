@@ -2,48 +2,40 @@ name: CI-CD Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
 
 permissions:
   contents: read
-  id-token: write
+  id-token: write   # REQUIRED for WIF
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout source code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-    - name: Authenticate to Google Cloud (OIDC)
+    - name: Authenticate to GCP (WIF)
       uses: google-github-actions/auth@v2
       with:
-        workload_identity_provider: "projects/840523927220/locations/global/workloadIdentityPools/github-pool/providers/github"
-        service_account: "github-ci-cd@newproject-483611.iam.gserviceaccount.com"
+        workload_identity_provider: projects/840523927220/locations/global/workloadIdentityPools/github-pool/providers/github
+        service_account: github-ci-cd@newproject-483611.iam.gserviceaccount.com
 
-    - name: Set up gcloud CLI
+    - name: Setup gcloud
       uses: google-github-actions/setup-gcloud@v2
       with:
         project_id: newproject-483611
 
-    - name: Configure Docker for Artifact Registry
-      run: |
-        gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+    - name: Configure Docker
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
 
-    - name: Build and Push Docker Image
+    - name: Build & Push Image
       run: |
-        docker build -t us-central1-docker.pkg.dev/newproject-483611/devops-repo/devops-app:${{ github.sha }} .
+        docker build -t us-central1-docker.pkg.dev/newproject-483611/devops-repo/devops-app:${{ github.sha }} app
         docker push us-central1-docker.pkg.dev/newproject-483611/devops-repo/devops-app:${{ github.sha }}
-
-    - name: Get GKE credentials
-      run: |
-        gcloud container clusters get-credentials devops-cluster \
-          --region us-central1 \
-          --project newproject-483611
 
     - name: Deploy to GKE
       run: |
+        gcloud container clusters get-credentials devops-cluster --region us-central1
         kubectl set image deployment/devops-app \
           app=us-central1-docker.pkg.dev/newproject-483611/devops-repo/devops-app:${{ github.sha }}
