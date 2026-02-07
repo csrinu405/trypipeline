@@ -1,40 +1,33 @@
-name: GKE CI/CD (Keyless)
+steps:
+- uses: actions/checkout@v4
 
-on:
-  push:
-    branches: [ "main" ]
+- name: Authenticate to GCP
+  uses: google-github-actions/auth@v2
+  with:
+    workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+    service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-permissions:
-  id-token: write
-  contents: read
+- uses: google-github-actions/setup-gcloud@v2
 
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
+- name: Install GKE auth plugin
+  run: |
+    gcloud components install gke-gcloud-auth-plugin --quiet
+    echo "USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
 
-    steps:
-    - uses: actions/checkout@v4
+- name: Docker Auth
+  run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
-    - name: Authenticate to GCP
-      uses: google-github-actions/auth@v2
-      with:
-        workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+- name: Build & Push Image
+  run: |
+    IMAGE=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/devops-repo/devops-app:${{ github.sha }}
+    docker build -t $IMAGE .
+    docker push $IMAGE
+    sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" k8s/deployment.yaml
 
-    - uses: google-github-actions/setup-gcloud@v2
+- name: Deploy to GKE
+  run: |
+    gcloud container clusters get-credentials devops-gke \
+      --region us-central1 \
+      --project ${{ secrets.GCP_PROJECT_ID }}
 
-    - name: Docker Auth
-      run: |
-        gcloud auth configure-docker us-central1-docker.pkg.dev
-
-    - name: Build & Push Image
-      run: |
-        IMAGE=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/devops-repo/devops-app:${{ github.sha }}
-        docker build -t $IMAGE .
-        docker push $IMAGE
-        sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" deployment.yaml
-
-    - name: Deploy to GKE
-      run: |
-        gcloud container clusters get-credentials devops-gke --region us-central1
-        kubectl apply -f deployment.yaml
+    kubectl apply -f k8s/
