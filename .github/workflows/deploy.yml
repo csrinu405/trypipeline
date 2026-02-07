@@ -36,5 +36,5 @@ jobs:
 
     - name: Deploy to GKE
       run: |
-        gcloud container clusters get-credentials demo-gke --zone us-central1-a
+        gcloud container clusters get-credentials devops-gke --zone us-central1-a
         kubectl apply -f deployment.yaml
