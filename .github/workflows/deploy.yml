@@ -1,12 +1,12 @@
-name: CI-CD Pipeline
+name: GKE CI/CD (Keyless)
 
 on:
   push:
     branches: [ "main" ]
 
 permissions:
+  id-token: write
   contents: read
-  id-token: write   # REQUIRED for WIF
 
 jobs:
   deploy:
@@ -15,27 +15,26 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Authenticate to GCP (WIF)
+    - name: Authenticate to GCP
       uses: google-github-actions/auth@v2
       with:
-        workload_identity_provider: 'projects/1039126858574/locations/global/workloadIdentityPools/github-demo-pool/providers/github'
-        service_account: 'github-wif@test-5081-483515.iam.gserviceaccount.com'
+        workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-    - name: Setup gcloud
-      uses: google-github-actions/setup-gcloud@v2
-      with:
-        project_id: newproject-483611
+    - uses: google-github-actions/setup-gcloud@v2
 
-    - name: Configure Docker
-      run: gcloud auth configure-docker us-central1-docker.pkg.dev --quiet
+    - name: Docker Auth
+      run: |
+        gcloud auth configure-docker us-central1-docker.pkg.dev
 
     - name: Build & Push Image
       run: |
-        docker build -t us-central1-docker.pkg.dev/newproject-483611/devops-repo/devops-app:${{ github.sha }} app
-        docker push us-central1-docker.pkg.dev/newproject-483611/devops-repo/devops-app:${{ github.sha }}
+        IMAGE=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/devops-repo/devops-app:${{ github.sha }}
+        docker build -t $IMAGE .
+        docker push $IMAGE
+        sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" deployment.yaml
 
     - name: Deploy to GKE
       run: |
-        gcloud container clusters get-credentials devops-cluster --region us-central1
-        kubectl set image deployment/devops-app \
-          app=us-central1-docker.pkg.dev/newproject-483611/devops-repo/devops-app:${{ github.sha }}
+        gcloud container clusters get-credentials demo-gke --zone us-central1-a
+        kubectl apply -f deployment.yaml
