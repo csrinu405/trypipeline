@@ -1,33 +1,51 @@
-steps:
-- uses: actions/checkout@v4
+name: Deploy to GKE
 
-- name: Authenticate to GCP
-  uses: google-github-actions/auth@v2
-  with:
-    workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-    service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+on:
+  push:
+    branches:
+      - main
 
-- uses: google-github-actions/setup-gcloud@v2
+permissions:
+  contents: read
+  id-token: write
 
-- name: Install GKE auth plugin
-  run: |
-    gcloud components install gke-gcloud-auth-plugin --quiet
-    echo "USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
 
-- name: Docker Auth
-  run: gcloud auth configure-docker us-central1-docker.pkg.dev
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-- name: Build & Push Image
-  run: |
-    IMAGE=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/devops-repo/devops-app:${{ github.sha }}
-    docker build -t $IMAGE .
-    docker push $IMAGE
-    sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" k8s/deployment.yaml
+    - name: Authenticate to GCP
+      uses: google-github-actions/auth@v2
+      with:
+        workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
-- name: Deploy to GKE
-  run: |
-    gcloud container clusters get-credentials devops-gke \
-      --region us-central1 \
-      --project ${{ secrets.GCP_PROJECT_ID }}
+    - name: Setup gcloud
+      uses: google-github-actions/setup-gcloud@v2
 
-    kubectl apply -f k8s/
+    - name: Install GKE auth plugin
+      run: |
+        gcloud components install gke-gcloud-auth-plugin --quiet
+        echo "USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
+
+    - name: Configure Docker
+      run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+    - name: Build and Push Docker Image
+      run: |
+        IMAGE=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/devops-repo/devops-app:${{ github.sha }}
+        docker build -t $IMAGE .
+        docker push $IMAGE
+        echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+
+    - name: Deploy to GKE
+      run: |
+        gcloud container clusters get-credentials devops-gke \
+          --region us-central1 \
+          --project ${{ secrets.GCP_PROJECT_ID }}
+
+        sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" k8s/deployment.yaml
+        kubectl apply -f k8s/
