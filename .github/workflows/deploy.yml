@@ -1,42 +1,40 @@
-name: Deploy to GKE
+name: Terraform + GKE Deploy
 
 on:
   push:
-    branches:
-      - main
-
-permissions:
-  contents: read
-  id-token: write
+    branches: [ "main" ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    permissions:
+      contents: read
+      id-token: write
 
-    - name: Authenticate to GCP
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Auth to GCP
       uses: google-github-actions/auth@v2
       with:
         workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
-        service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+        service_account: ${{ secrets.GCP_SA }}
 
     - name: Setup gcloud
       uses: google-github-actions/setup-gcloud@v2
 
-    - name: Install GKE auth plugin
+    - name: Terraform Init & Apply
       run: |
-        gcloud components install gke-gcloud-auth-plugin --quiet
-        echo "USE_GKE_GCLOUD_AUTH_PLUGIN=True" >> $GITHUB_ENV
+        cd terraform
+        terraform init
+        terraform apply -auto-approve \
+          -var="project_id=${{ secrets.GCP_PROJECT_ID }}"
 
-    - name: Configure Docker
-      run: gcloud auth configure-docker us-central1-docker.pkg.dev
-
-    - name: Build and Push Docker Image
+    - name: Build & Push Docker
       run: |
         IMAGE=us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/devops-repo/devops-app:${{ github.sha }}
+        gcloud auth configure-docker us-central1-docker.pkg.dev -q
         docker build -t $IMAGE .
         docker push $IMAGE
         echo "IMAGE=$IMAGE" >> $GITHUB_ENV
@@ -47,6 +45,6 @@ jobs:
           --region us-central1 \
           --project ${{ secrets.GCP_PROJECT_ID }}
 
-        sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" deployment.yaml
+        sed "s|IMAGE_TAG|$IMAGE|g" k8s/deployment.yaml | kubectl apply -f -
         kubectl apply -f deployment.yaml
         kubectl apply -f service.yaml
