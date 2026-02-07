@@ -48,4 +48,5 @@ jobs:
           --project ${{ secrets.GCP_PROJECT_ID }}
 
         sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" deployment.yaml
-        kubectl apply -f .
+        kubectl apply -f deployment.yaml
+        kubectl apply -f service.yaml
