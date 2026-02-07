@@ -47,5 +47,5 @@ jobs:
           --region us-central1 \
           --project ${{ secrets.GCP_PROJECT_ID }}
 
-        sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" k8s/deployment.yaml
+        sed -i "s|IMAGE_PLACEHOLDER|$IMAGE|g" deployment.yaml
         kubectl apply -f k8s/
